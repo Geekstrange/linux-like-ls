@@ -1,2 +1,2 @@
-# like-powershell-ls-for-Linux
+# linux-like-ls
 Use ls like Linux in powershell 在Powershell中像Linux一样使用ls
