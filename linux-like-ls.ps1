@@ -8,10 +8,10 @@ $LinuxLikeLsSpaceLength = 2
 $ANSI_ESC = [char]0x1B
 $ANSI_RESET = "$ANSI_ESC[0m"
 $LinuxLikeLsColorMap = @{
-    "Directory"    = "$ANSI_ESC[94m" # Cyan
-    "Executable"   = "$ANSI_ESC[32m" # Green
-    "SymbolicLink" = "$ANSI_ESC[96m" # Bright cyan
-    "Other"        = $ANSI_RESET     # reset color and styles
+    "Directory"    = "$ANSI_ESC[94m" # 亮蓝色
+    "Executable"   = "$ANSI_ESC[32m" # 绿色
+    "SymbolicLink" = "$ANSI_ESC[96m" # 亮青色
+    "Other"        = $ANSI_RESET     # 默认颜色
 }
 
 $LinuxLikeLsTypeIdMap = @{
@@ -191,9 +191,10 @@ Function Linux-Like-LS {
     try {
         # 替换 -l 选项的处理：使用表格输出
         if ($lsArgs["longFormat"]) {
-            # 获取指定路径的项目
+            # 获取指定路径的项目（包含文件类型）
             $items = Get-ChildItem -Path $lsArgs["path"] -ErrorAction Stop | 
-                     Select-Object Mode, LastWriteTime, Name
+                     Select-Object @{Name="Type"; Expression={Get-FileType $_}}, 
+                                  Mode, LastWriteTime, Name
 
             # 如果没有项目则直接返回
             if (-not $items -or $items.Count -eq 0) {
@@ -201,12 +202,18 @@ Function Linux-Like-LS {
                 return
             }
 
-            # 动态计算Name列显示宽度（考虑中文字符）
+            # 动态计算Name列显示宽度（考虑中文字符和文件类型标识）
             $nameDisplayWidth = 10
-            $maxWidth = ($items | ForEach-Object { 
-                Get-StringDisplayWidth $_.Name 
-            } | Measure-Object -Maximum).Maximum
-            $nameDisplayWidth = [Math]::Max($maxWidth, 10)
+            if ($items) {
+                $maxWidth = $items | ForEach-Object { 
+                    $baseName = $_.Name
+                    if ($lsArgs["showFileType"]) {
+                        $baseName += $script:LinuxLikeLsTypeIdMap[$_.Type.ToString()]
+                    }
+                    Get-StringDisplayWidth $baseName
+                } | Measure-Object -Maximum | Select-Object -ExpandProperty Maximum
+                $nameDisplayWidth = [Math]::Max($maxWidth, 10)
+            }
 
             # 定义列宽（显示宽度）
             $modeWidth = 5      # 显示宽度5
@@ -226,11 +233,29 @@ Function Linux-Like-LS {
             $header
             $divider
 
-            # 输出数据行
+            # 输出数据行（带颜色和文件类型标识）
             $items | ForEach-Object {
                 $mode = PadByWidth $_.Mode $modeWidth
                 $time = PadByWidth ($_.LastWriteTime.ToString('yyyy/MM/dd HH:mm')) $timeWidth
-                $name = PadByWidth $_.Name $nameWidth
+                
+                # 构建基础文件名（含类型标识）
+                $baseName = $_.Name
+                if ($lsArgs["showFileType"]) {
+                    $baseName += $script:LinuxLikeLsTypeIdMap[$_.Type.ToString()]
+                }
+                
+                # 计算显示宽度和填充空格
+                $currentWidth = Get-StringDisplayWidth $baseName
+                $paddingSpaces = [Math]::Max(0, $nameWidth - $currentWidth)
+                
+                # 应用颜色（如启用）
+                if ($lsArgs["setColor"] -and ($_.Type -ne [FileType]::Other)) {
+                    $color = $script:LinuxLikeLsColorMap[$_.Type.ToString()]
+                    $name = $color + $baseName + $ANSI_RESET + (' ' * $paddingSpaces)
+                } else {
+                    $name = $baseName + (' ' * $paddingSpaces)
+                }
+
                 "│$mode│$time│$name│"
             }
 
