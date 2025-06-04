@@ -51,6 +51,36 @@ enum FileType {
     Other
 }
 
+# 辅助函数：计算字符串的显示宽度（中文算2个宽度）
+function Get-StringDisplayWidth {
+    param([string]$str)
+    $len = 0
+    foreach ($c in $str.ToCharArray()) {
+        # 判断是否为中文字符（扩展Unicode范围）
+        $codepoint = [int]$c
+        if (($codepoint -ge 0x4E00 -and $codepoint -le 0x9FFF) -or 
+            ($codepoint -ge 0x3400 -and $codepoint -le 0x4DBF) -or 
+            ($codepoint -ge 0x20000 -and $codepoint -le 0x2A6DF) -or 
+            ($codepoint -ge 0x2A700 -and $codepoint -le 0x2B73F)) {
+            $len += 2  # 中文字符宽度
+        } else {
+            $len += 1  # 英文字符宽度
+        }
+    }
+    return $len
+}
+
+# 辅助函数：按显示宽度填充字符串
+function PadByWidth {
+    param(
+        [string]$str,
+        [int]$totalWidth
+    )
+    $currentWidth = Get-StringDisplayWidth $str
+    $padding = [Math]::Max(0, $totalWidth - $currentWidth)
+    return $str + (' ' * $padding)
+}
+
 Function Linux-Like-LS {
     function Get-Args ($orgArgs, $lsArgs) {
         $i = 0
@@ -100,33 +130,7 @@ Function Linux-Like-LS {
         }
         return $type
     }
-
     
-    function Get-StringDisplayWidth {
-        param([string]$text)
-        $width = 0
-        foreach ($char in $text.ToCharArray()) {
-            $codepoint = [int][char]$char
-            $isWide = $false
-            
-            if (($codepoint -ge 0x1100 -and $codepoint -le 0x11FF) -or 
-                ($codepoint -ge 0x2E80 -and $codepoint -le 0x9FFF) -or 
-                ($codepoint -ge 0xAC00 -and $codepoint -le 0xD7AF) -or 
-                ($codepoint -ge 0xF900 -and $codepoint -le 0xFAFF) -or 
-                ($codepoint -ge 0xFF01 -and $codepoint -le 0xFF60) -or 
-                ($codepoint -ge 0xFFE0 -and $codepoint -le 0xFFE6)) {
-                $isWide = $true
-            }
-            
-            if ($isWide) {
-                $width += 2
-            } else {
-                $width += 1
-            }
-        }
-        return $width
-    }
-
     function Get-LineCount($displayWidths, $windowWidth, $padding=$null) {
         if($padding -eq $null){ $padding = $script:LinuxLikeLsSpaceLength }
 
@@ -197,14 +201,23 @@ Function Linux-Like-LS {
                 return
             }
 
-            # 动态计算Name列宽度（至少10字符）
-            $nameWidth = 10
-            $maxNameLength = ($items | ForEach-Object { $_.Name.Length } | Measure-Object -Maximum).Maximum
-            $nameWidth = [Math]::Max($maxNameLength, 10)
+            # 动态计算Name列显示宽度（考虑中文字符）
+            $nameDisplayWidth = 10
+            $maxWidth = ($items | ForEach-Object { 
+                Get-StringDisplayWidth $_.Name 
+            } | Measure-Object -Maximum).Maximum
+            $nameDisplayWidth = [Math]::Max($maxWidth, 10)
+
+            # 定义列宽（显示宽度）
+            $modeWidth = 5      # 显示宽度5
+            $timeWidth = 16     # 显示宽度16
+            $nameWidth = $nameDisplayWidth  # 动态计算
 
             # 构建表格边框
             $topLine    = "┌─────┬────────────────┬" + ("─" * $nameWidth) + "┐"
-            $header     = "│Mode │LastWriteTime   │" + ("Name".PadRight($nameWidth)) + "│"
+            $header     = "│" + (PadByWidth "Mode" $modeWidth) + 
+                          "│" + (PadByWidth "LastWriteTime" $timeWidth) + 
+                          "│" + (PadByWidth "Name" $nameWidth) + "│"
             $divider    = "├─────┼────────────────┼" + ("─" * $nameWidth) + "┤"
             $bottomLine = "└─────┴────────────────┴" + ("─" * $nameWidth) + "┘"
 
@@ -215,9 +228,9 @@ Function Linux-Like-LS {
 
             # 输出数据行
             $items | ForEach-Object {
-                $mode = $_.Mode.PadRight(5)
-                $time = $_.LastWriteTime.ToString('yyyy/MM/dd HH:mm').PadRight(15)
-                $name = $_.Name.PadRight($nameWidth)
+                $mode = PadByWidth $_.Mode $modeWidth
+                $time = PadByWidth ($_.LastWriteTime.ToString('yyyy/MM/dd HH:mm')) $timeWidth
+                $name = PadByWidth $_.Name $nameWidth
                 "│$mode│$time│$name│"
             }
 
