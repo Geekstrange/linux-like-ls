@@ -1,6 +1,24 @@
+# 可执行文件扩展名列表
 $LinuxLikeLsExecutables = @(
     ".exe", ".bat", ".cmd",".ps1", ".sh", 
     ".js", ".py", ".rb", ".pl", ".cs", ".vbs"
+)
+
+# 压缩文件扩展名列表
+$LinuxLikeLsArchiveExtensions = @(
+	".7z", ".zip", ".rar", ".tar", ".gz", ".xz", ".bz2", 
+	".cab", ".img", ".iso", ".jar", ".pea", ".rpm", ".tgz", ".z", ".deb", ".arj", ".lzh", 
+	".lzma", ".lzma2", ".war", ".zst", ".part", ".s7z", ".split"
+)
+
+# 媒体文件扩展名列表
+$LinuxLikeLsMediaExtensions = @(
+# 音频格式
+	".aac", ".amr", ".caf", ".m3u", ".midi", ".mod", ".mp1", ".mp2", ".mp3", ".ogg", ".opus", ".ra", ".wma", ".wav", ".wv",
+# 视频格式
+	".3gp", ".3g2", ".asf", ".avi", ".flv", ".m4v", ".mkv", ".mov", ".mp4", ".mpeg", ".mpg", ".mpe", ".mts", ".rm", ".rmvb", ".swf", ".vob", ".webm", ".wmv",
+# 图像格式
+	".ai", ".avage", ".art", ".blend", ".cgm", ".cin", ".cur", ".cut", ".dcx", ".dng", ".dpx", ".emf", ".fit", ".fits", ".fpx", ".g3", ".hdr", ".ief", ".jbig", ".jfif", ".jls", ".jp2", ".jpc", ".jpx", ".jpg", ".jpeg", ".jxl", ".pbm", ".pcd", ".pcx", ".pgm", ".pict", ".png", ".pnm", ".ppm", ".psd", ".ras", ".rgb", ".svg", ".tga", ".tif", ".tiff", ".wbmp", ".xpm"
 )
 
 $LinuxLikeLsSpaceLength = 2
@@ -11,6 +29,8 @@ $LinuxLikeLsColorMap = @{
     "Directory"    = "$ANSI_ESC[94m" # 亮蓝色
     "Executable"   = "$ANSI_ESC[32m" # 绿色
     "SymbolicLink" = "$ANSI_ESC[96m" # 亮青色
+    "Archive"      = "$ANSI_ESC[91m" # 红色
+    "Media"        = "$ANSI_ESC[95m" # 紫色
     "Other"        = $ANSI_RESET     # 默认颜色
 }
 
@@ -18,6 +38,8 @@ $LinuxLikeLsTypeIdMap = @{
     "Directory" = "/"
     "Executable" = "*"
     "SymbolicLink" = "@"
+    "Archive"    = "#"  
+    "Media"      = "~"
     "Other" = ""
 }
 
@@ -26,7 +48,7 @@ linux-like-ls
 
 Options:
 -1     list one file per line
--f,F   append indicator (one of */@) to entries
+-f,F   append indicator (one of */@/#/~) to entries
 -c,C   color the output.
 -l,L   display items in a formatted table with borders.
        this option will be preferentially applied.
@@ -35,10 +57,13 @@ Options:
 Notice:
 For redirect or pipe, you must use with the pass through option (-L)
 or -1 without -F, -C option. 
-When used with -L option, this function simply calls Get-ChildItem,
-so returns an array of FileSystemInfo objects.
-When used with -1 option, this function returns a string array of the
-file names.
+
+File Type Indicators:
+/ = Directory
+* = Executable
+@ = Symbolic Link
+# = Archive (compressed file)
+~ = Media file (audio/video/image)
 "@
 
 # -----------------------------------------------------------------------------------------------------------------
@@ -48,6 +73,8 @@ enum FileType {
     Directory
     Executable
     SymbolicLink
+    Archive
+    Media  # 新增媒体文件类型
     Other
 }
 
@@ -82,6 +109,9 @@ function PadByWidth {
 }
 
 Function Linux-Like-LS {
+    # 检测输出是否被重定向（管道或文件）
+    $isOutputRedirected = [Console]::IsOutputRedirected
+
     function Get-Args ($orgArgs, $lsArgs) {
         $i = 0
         while ($i -lt $orgArgs.Count) {
@@ -91,13 +121,18 @@ Function Linux-Like-LS {
                 $lsArgs["showHelp"] = $true
                 return
             }
-            if ($arg.StartsWith("-")) {
+            if ($arg -eq "-s" -or $arg -eq "--search") {
+                $i++
+                $lsArgs["searchTerm"] = $orgArgs[$i]
+            }
+            elseif ($arg.StartsWith("-")) {
                 foreach ($char in $arg.ToLower().Substring(1).ToCharArray()) {
                     switch ($char) {
                         "1" { $lsArgs["onePerLine"] = $true }
                         "l" { $lsArgs["longFormat"] = $true }
                         "f" { $lsArgs["showFileType"] = $true }
                         "c" { $lsArgs["setColor"] = $true }
+                        "s" { $lsArgs["searchMode"] = $true }
                     }
                 }
             } else {
@@ -123,6 +158,15 @@ Function Linux-Like-LS {
             elseif ($item.PSIsContainer) {
                 $type = [FileType]::Directory
             }
+            # 媒体文件类型检测
+            elseif ($script:LinuxLikeLsMediaExtensions -contains $item.Extension.ToLower()) {
+                $type = [FileType]::Media
+            }
+            # 压缩文件类型检测
+            elseif ($script:LinuxLikeLsArchiveExtensions -contains $item.Extension.ToLower()) {
+                $type = [FileType]::Archive
+            }
+			# 可执行文件类型检测
             elseif ($script:LinuxLikeLsExecutables -contains $item.Extension.ToLower()) {
                 $type = [FileType]::Executable
             }
@@ -180,6 +224,8 @@ Function Linux-Like-LS {
         "showFileType" = $false  
         "setColor" = $false 
         "showHelp" = $false 
+        "searchTerm" = $null
+        "searchMode" = $false
     }
     Get-Args $args $lsArgs
 
@@ -189,26 +235,33 @@ Function Linux-Like-LS {
     }
 
     try {
+        # 获取文件列表（支持搜索过滤）
+        $items = Get-ChildItem -Path $lsArgs["path"] -ErrorAction Stop
+        
+        # 搜索筛选逻辑
+        if ($lsArgs["searchTerm"] -or $lsArgs["searchMode"]) {
+            $searchTerm = if ($lsArgs["searchTerm"]) { 
+                $lsArgs["searchTerm"] 
+            } else { 
+                $lsArgs["path"] = $args[-1]
+                $args[-1]
+            }
+            
+            $items = $items | Where-Object { 
+                $_.Name -like "*$searchTerm*" 
+            }
+        }
+
         # 替换 -l 选项的处理：使用表格输出
         if ($lsArgs["longFormat"]) {
-            # 获取指定路径的项目（包含文件类型）
-            $items = Get-ChildItem -Path $lsArgs["path"] -ErrorAction Stop | 
-                     Select-Object @{Name="Type"; Expression={Get-FileType $_}}, 
-                                  Mode, LastWriteTime, Name
-
-            # 如果没有项目则直接返回
-            if (-not $items -or $items.Count -eq 0) {
-                Write-Output "No items found in $($lsArgs['path'])"
-                return
-            }
-
-            # 动态计算Name列显示宽度（考虑中文字符和文件类型标识）
+            # 动态计算Name列显示宽度
             $nameDisplayWidth = 10
             if ($items) {
                 $maxWidth = $items | ForEach-Object { 
                     $baseName = $_.Name
                     if ($lsArgs["showFileType"]) {
-                        $baseName += $script:LinuxLikeLsTypeIdMap[$_.Type.ToString()]
+                        $type = Get-FileType $_
+                        $baseName += $script:LinuxLikeLsTypeIdMap[$type.ToString()]
                     }
                     Get-StringDisplayWidth $baseName
                 } | Measure-Object -Maximum | Select-Object -ExpandProperty Maximum
@@ -238,19 +291,22 @@ Function Linux-Like-LS {
                 $mode = PadByWidth $_.Mode $modeWidth
                 $time = PadByWidth ($_.LastWriteTime.ToString('yyyy/MM/dd HH:mm')) $timeWidth
                 
+                # 获取文件类型
+                $type = Get-FileType $_
+                
                 # 构建基础文件名（含类型标识）
                 $baseName = $_.Name
                 if ($lsArgs["showFileType"]) {
-                    $baseName += $script:LinuxLikeLsTypeIdMap[$_.Type.ToString()]
+                    $baseName += $script:LinuxLikeLsTypeIdMap[$type.ToString()]
                 }
                 
                 # 计算显示宽度和填充空格
                 $currentWidth = Get-StringDisplayWidth $baseName
                 $paddingSpaces = [Math]::Max(0, $nameWidth - $currentWidth)
                 
-                # 应用颜色（如启用）
-                if ($lsArgs["setColor"] -and ($_.Type -ne [FileType]::Other)) {
-                    $color = $script:LinuxLikeLsColorMap[$_.Type.ToString()]
+                # 应用颜色（如启用且未重定向）
+                if ((-not $isOutputRedirected) -and $lsArgs["setColor"] -and ($type -ne [FileType]::Other)) {
+                    $color = $script:LinuxLikeLsColorMap[$type.ToString()]
                     $name = $color + $baseName + $ANSI_RESET + (' ' * $paddingSpaces)
                 } else {
                     $name = $baseName + (' ' * $paddingSpaces)
@@ -263,12 +319,14 @@ Function Linux-Like-LS {
             return
         } 
         
-        $items = Get-ChildItem -Path $lsArgs["path"] -ErrorAction Stop
         if($script:LinuxLikeLsDebugFlag){
             Write-Host "items count : "$items.Count
         }
 
-        if ($items.Count -eq 0) { return }
+        if ($items.Count -eq 0) { 
+            Write-Output "No matching files found"
+            return 
+        }
 
         $displayNames = @()
         $fileTypes = @()
@@ -287,7 +345,8 @@ Function Linux-Like-LS {
                     $baseName += $script:LinuxLikeLsTypeIdMap[$type.ToString()]
                 }
 
-                if ($lsArgs["setColor"] -and ($type -ne [FileType]::Other)) {
+                # 应用颜色（如启用且未重定向）
+                if ((-not $isOutputRedirected) -and $lsArgs["setColor"] -and ($type -ne [FileType]::Other)) {
                     $color = $script:LinuxLikeLsColorMap[$type.ToString()]
                     $displayNames += $color + $baseName + $ANSI_RESET
                 }
