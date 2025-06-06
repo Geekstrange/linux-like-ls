@@ -15,7 +15,7 @@
 
 1. 将项目克隆或下载到 PowerShell 模块目录：
    ```powershell
-   git clone https://github.com/yourusername/linux-like-ls-for-powershell.git "$env:USERPROFILE\Documents\PowerShell\Modules\linux-like-ls-for-powershell"
+   git clone https://github.com/Geekstrange/linux-like-ls-for-powershell.git "$env:USERPROFILE\Documents\PowerShell\Modules\linux-like-ls-for-powershell"
    ```
 
 2. 在 PowerShell 配置文件 (`$PROFILE`) 中添加以下内容：
