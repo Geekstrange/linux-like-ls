@@ -29,43 +29,43 @@ $LinuxLikeLsBackupExtensions = @(
 )
 
 $LinuxLikeLsSpaceLength = 2
-
 $ANSI_ESC = [char]0x1B
 $ANSI_RESET = "$ANSI_ESC[0m"
+
+# 颜色映射表
 $LinuxLikeLsColorMap = @{
     "Directory"    = "$ANSI_ESC[94m" # 亮蓝色
     "Executable"   = "$ANSI_ESC[32m" # 绿色
     "SymbolicLink" = "$ANSI_ESC[96m" # 亮青色
     "Archive"      = "$ANSI_ESC[91m" # 红色
     "Media"        = "$ANSI_ESC[95m" # 紫色
-	"Backup"       = "$ANSI_ESC[90m" # 灰色
+    "Backup"       = "$ANSI_ESC[90m" # 灰色
     "Other"        = $ANSI_RESET     # 默认颜色
 }
 
+# 文件类型标识符
 $LinuxLikeLsTypeIdMap = @{
-    "Directory" = "/"
-    "Executable" = "*"
+    "Directory"    = "/"
+    "Executable"   = "*"
     "SymbolicLink" = "@"
-    "Archive"    = "#"  
-    "Media"      = "~"
-	"Backup"       = "%"
-    "Other" = ""
+    "Archive"      = "#"  
+    "Media"        = "~"  
+    "Backup"       = "%"
+    "Other"        = ""
 }
 
+# 更新帮助文本说明
 $LinuxLikeLsHelpText = @"
 linux-like-ls
 
 Options:
 -1     list one file per line
--f,F   append indicator (one of */@/#/~) to entries
+-f,F   append indicator (one of */@/#/~/%) to entries
 -c,C   color the output.
 -l,L   display items in a formatted table with borders.
-       this option will be preferentially applied.
+-s     search files (case-insensitive)
+-S     search files (case-sensitive)
 --help display this help message
-
-Notice:
-For redirect or pipe, you must use with the pass through option (-L)
-or -1 without -F, -C option. 
 
 File Type Indicators:
 / = Directory
@@ -73,18 +73,20 @@ File Type Indicators:
 @ = Symbolic Link
 # = Archive (compressed file)
 ~ = Media file (audio/video/image)
+% = Backup/Temporary file
 "@
 
 # -----------------------------------------------------------------------------------------------------------------
 $LinuxLikeLsDebugFlag = $false
 
+# 文件类型枚举
 enum FileType {
     Directory
     Executable
     SymbolicLink
     Archive
     Media
-	Backup
+    Backup
     Other
 }
 
@@ -93,15 +95,14 @@ function Get-StringDisplayWidth {
     param([string]$str)
     $len = 0
     foreach ($c in $str.ToCharArray()) {
-        # 判断是否为中文字符（扩展Unicode范围）
         $codepoint = [int]$c
         if (($codepoint -ge 0x4E00 -and $codepoint -le 0x9FFF) -or 
             ($codepoint -ge 0x3400 -and $codepoint -le 0x4DBF) -or 
             ($codepoint -ge 0x20000 -and $codepoint -le 0x2A6DF) -or 
             ($codepoint -ge 0x2A700 -and $codepoint -le 0x2B73F)) {
-            $len += 2  # 中文字符宽度
+            $len += 2
         } else {
-            $len += 1  # 英文字符宽度
+            $len += 1
         }
     }
     return $len
@@ -119,7 +120,6 @@ function PadByWidth {
 }
 
 Function Linux-Like-LS {
-    # 检测输出是否被重定向（管道或文件）
     $isOutputRedirected = [Console]::IsOutputRedirected
 
     function Get-Args ($orgArgs, $lsArgs) {
@@ -127,33 +127,48 @@ Function Linux-Like-LS {
         while ($i -lt $orgArgs.Count) {
             $arg = $orgArgs[$i]
             $arg = "$arg" 
+        
+            # 处理帮助参数
             if ($arg -eq "--help") {
                 $lsArgs["showHelp"] = $true
                 return
             }
-            if ($arg -eq "-s" -or $arg -eq "--search") {
+        
+            # 严格区分大小写的搜索参数
+            if ($arg -cmatch "-S") {
                 $i++
                 $lsArgs["searchTerm"] = $orgArgs[$i]
+                $lsArgs["strictCase"] = $true  # 严格匹配大小写标志
             }
+            # 忽略大小写的搜索参数
+            elseif ($arg -cmatch "-s") {
+                $i++
+                $lsArgs["searchTerm"] = $orgArgs[$i]
+                $lsArgs["ignoreCase"] = $true  # 忽略大小写标志
+            }
+            # 其他单字母参数组合（如 -lc）
             elseif ($arg.StartsWith("-")) {
                 foreach ($char in $arg.ToLower().Substring(1).ToCharArray()) {
                     switch ($char) {
-                        "1" { $lsArgs["onePerLine"] = $true }
-                        "l" { $lsArgs["longFormat"] = $true }
-                        "f" { $lsArgs["showFileType"] = $true }
-                        "c" { $lsArgs["setColor"] = $true }
-                        "s" { $lsArgs["searchMode"] = $true }
+                        "1" { $lsArgs["onePerLine"] = $true }    # 每行显示一个文件
+                        "l" { $lsArgs["longFormat"] = $true }    # 长格式表格显示
+                        "f" { $lsArgs["showFileType"] = $true }  # 显示文件类型标识符
+                        "c" { $lsArgs["setColor"] = $true }      # 启用彩色输出
                     }
                 }
-            } else {
+            } 
+            # 非参数项视为路径
+            else {
                 $lsArgs["path"] = $arg
             }
             $i++
         }
+    
+        # 长格式优先处理逻辑
         if ($lsArgs["longFormat"]) {
             $lsArgs["onePerLine"] = $false
         }
-    }    
+    }
 
     function Get-FileType {
         param([System.IO.FileSystemInfo]$item)
@@ -165,22 +180,18 @@ Function Linux-Like-LS {
             if ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
                 $type = [FileType]::SymbolicLink
             }
-			# 临时文件类型检测
-            elseif ($script:LinuxLikeLsBackupExtensions -contains $item.Extension.ToLower()) {
-                $type = [FileType]::Backup
-            }
             elseif ($item.PSIsContainer) {
                 $type = [FileType]::Directory
             }
-            # 媒体文件类型检测
+            elseif ($script:LinuxLikeLsBackupExtensions -contains $item.Extension.ToLower()) {
+                $type = [FileType]::Backup
+            }
             elseif ($script:LinuxLikeLsMediaExtensions -contains $item.Extension.ToLower()) {
                 $type = [FileType]::Media
             }
-            # 压缩文件类型检测
             elseif ($script:LinuxLikeLsArchiveExtensions -contains $item.Extension.ToLower()) {
                 $type = [FileType]::Archive
             }
-			# 可执行文件类型检测
             elseif ($script:LinuxLikeLsExecutables -contains $item.Extension.ToLower()) {
                 $type = [FileType]::Executable
             }
@@ -239,7 +250,8 @@ Function Linux-Like-LS {
         "setColor" = $false 
         "showHelp" = $false 
         "searchTerm" = $null
-        "searchMode" = $false
+        "ignoreCase" = $false
+        "strictCase" = $false
     }
     Get-Args $args $lsArgs
 
@@ -249,26 +261,26 @@ Function Linux-Like-LS {
     }
 
     try {
-        # 获取文件列表（支持搜索过滤）
         $items = Get-ChildItem -Path $lsArgs["path"] -ErrorAction Stop
         
-        # 搜索筛选逻辑
-        if ($lsArgs["searchTerm"] -or $lsArgs["searchMode"]) {
-            $searchTerm = if ($lsArgs["searchTerm"]) { 
-                $lsArgs["searchTerm"] 
-            } else { 
-                $lsArgs["path"] = $args[-1]
-                $args[-1]
+        # 搜索过滤逻辑（区分大小写）
+        if ($lsArgs["searchTerm"]) {
+            if ($lsArgs["ignoreCase"]) {
+                # 忽略大小写搜索
+                $items = $items | Where-Object { 
+                    $_.Name -like "*$($lsArgs['searchTerm'])*" 
+                }
             }
-            
-            $items = $items | Where-Object { 
-                $_.Name -like "*$searchTerm*" 
+            elseif ($lsArgs["strictCase"]) {
+                # 严格匹配大小写
+                $items = $items | Where-Object { 
+                    $_.Name -clike "*$($lsArgs['searchTerm'])*" 
+                }
             }
         }
 
-        # 替换 -l 选项的处理：使用表格输出
+        # 表格输出模式
         if ($lsArgs["longFormat"]) {
-            # 动态计算Name列显示宽度
             $nameDisplayWidth = 10
             if ($items) {
                 $maxWidth = $items | ForEach-Object { 
@@ -282,10 +294,9 @@ Function Linux-Like-LS {
                 $nameDisplayWidth = [Math]::Max($maxWidth, 10)
             }
 
-            # 定义列宽（显示宽度）
-            $modeWidth = 5      # 显示宽度5
-            $timeWidth = 16     # 显示宽度16
-            $nameWidth = $nameDisplayWidth  # 动态计算
+            $modeWidth = 5
+            $timeWidth = 16
+            $nameWidth = $nameDisplayWidth
 
             # 构建表格边框
             $topLine    = "┌─────┬────────────────┬" + ("─" * $nameWidth) + "┐"
@@ -295,30 +306,24 @@ Function Linux-Like-LS {
             $divider    = "├─────┼────────────────┼" + ("─" * $nameWidth) + "┤"
             $bottomLine = "└─────┴────────────────┴" + ("─" * $nameWidth) + "┘"
 
-            # 输出表格
             $topLine
             $header
             $divider
 
-            # 输出数据行（带颜色和文件类型标识）
             $items | ForEach-Object {
                 $mode = PadByWidth $_.Mode $modeWidth
                 $time = PadByWidth ($_.LastWriteTime.ToString('yyyy/MM/dd HH:mm')) $timeWidth
                 
-                # 获取文件类型
                 $type = Get-FileType $_
                 
-                # 构建基础文件名（含类型标识）
                 $baseName = $_.Name
                 if ($lsArgs["showFileType"]) {
                     $baseName += $script:LinuxLikeLsTypeIdMap[$type.ToString()]
                 }
                 
-                # 计算显示宽度和填充空格
                 $currentWidth = Get-StringDisplayWidth $baseName
                 $paddingSpaces = [Math]::Max(0, $nameWidth - $currentWidth)
                 
-                # 应用颜色（如启用且未重定向）
                 if ((-not $isOutputRedirected) -and $lsArgs["setColor"] -and ($type -ne [FileType]::Other)) {
                     $color = $script:LinuxLikeLsColorMap[$type.ToString()]
                     $name = $color + $baseName + $ANSI_RESET + (' ' * $paddingSpaces)
@@ -359,7 +364,6 @@ Function Linux-Like-LS {
                     $baseName += $script:LinuxLikeLsTypeIdMap[$type.ToString()]
                 }
 
-                # 应用颜色（如启用且未重定向）
                 if ((-not $isOutputRedirected) -and $lsArgs["setColor"] -and ($type -ne [FileType]::Other)) {
                     $color = $script:LinuxLikeLsColorMap[$type.ToString()]
                     $displayNames += $color + $baseName + $ANSI_RESET
