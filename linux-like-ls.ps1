@@ -21,6 +21,13 @@ $LinuxLikeLsMediaExtensions = @(
 	".ai", ".avage", ".art", ".blend", ".cgm", ".cin", ".cur", ".cut", ".dcx", ".dng", ".dpx", ".emf", ".fit", ".fits", ".fpx", ".g3", ".hdr", ".ief", ".jbig", ".jfif", ".jls", ".jp2", ".jpc", ".jpx", ".jpg", ".jpeg", ".jxl", ".pbm", ".pcd", ".pcx", ".pgm", ".pict", ".png", ".pnm", ".ppm", ".psd", ".ras", ".rgb", ".svg", ".tga", ".tif", ".tiff", ".wbmp", ".xpm"
 )
 
+# 备份文件扩展名列表
+$LinuxLikeLsBackupExtensions = @(
+    ".bak", ".backup", ".orig", ".old", ".tmp", ".temp", ".swap", 
+    ".chklist", ".chk", ".ms", ".diz", ".wbk", ".xlk", ".cdr_", 
+    ".nch", ".ftg", ".gid", ".syd"
+)
+
 $LinuxLikeLsSpaceLength = 2
 
 $ANSI_ESC = [char]0x1B
@@ -31,6 +38,7 @@ $LinuxLikeLsColorMap = @{
     "SymbolicLink" = "$ANSI_ESC[96m" # 亮青色
     "Archive"      = "$ANSI_ESC[91m" # 红色
     "Media"        = "$ANSI_ESC[95m" # 紫色
+	"Backup"       = "$ANSI_ESC[90m" # 灰色
     "Other"        = $ANSI_RESET     # 默认颜色
 }
 
@@ -40,6 +48,7 @@ $LinuxLikeLsTypeIdMap = @{
     "SymbolicLink" = "@"
     "Archive"    = "#"  
     "Media"      = "~"
+	"Backup"       = "%"
     "Other" = ""
 }
 
@@ -74,7 +83,8 @@ enum FileType {
     Executable
     SymbolicLink
     Archive
-    Media  # 新增媒体文件类型
+    Media
+	Backup
     Other
 }
 
@@ -154,6 +164,10 @@ Function Linux-Like-LS {
         try {
             if ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
                 $type = [FileType]::SymbolicLink
+            }
+			# 临时文件类型检测
+            elseif ($script:LinuxLikeLsBackupExtensions -contains $item.Extension.ToLower()) {
+                $type = [FileType]::Backup
             }
             elseif ($item.PSIsContainer) {
                 $type = [FileType]::Directory
