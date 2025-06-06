@@ -63,7 +63,7 @@ ls [路径] [选项]
    ls
    ```
 
-   ![](image\ls.png)
+   ![ls](https://github.com/Geekstrange/linux-like-ls-for-powershell/blob/main/image/ls.png)
 
 2. **彩色输出**：
 
@@ -71,7 +71,7 @@ ls [路径] [选项]
    ls -c
    ```
 
-   ![](image\lsc.png)
+   ![ls-c](https://github.com/Geekstrange/linux-like-ls-for-powershell/blob/main/image/lsc.png)
 
 3. **显示文件类型指示符**：
 
@@ -79,7 +79,7 @@ ls [路径] [选项]
    ls -f
    ```
 
-   ![](image\lsf.png)
+   ![ls-f](https://github.com/Geekstrange/linux-like-ls-for-powershell/blob/main/image/lsf.png)
 
 4. **每行显示一个文件**：
 
@@ -87,7 +87,7 @@ ls [路径] [选项]
    ls -1
    ```
 
-   ![](image\ls1.png)
+   ![ls-1](https://github.com/Geekstrange/linux-like-ls-for-powershell/blob/main/image/ls1.png)
 
 5. **组合选项**（彩色+文件类型+表格指示符）：
 
@@ -95,7 +95,7 @@ ls [路径] [选项]
    ls -c -f -l或ls -cfl
    ```
 
-   ![](image\lslcf.png)
+   ![ls-cfl](https://github.com/Geekstrange/linux-like-ls-for-powershell/blob/main/image/lslcf.png)
 
 6. **指定路径**：
 
@@ -110,7 +110,7 @@ ls [路径] [选项]
    ls -s "r"
    ```
 
-   ![](image\lss.png)
+   ![ls-s](https://github.com/Geekstrange/linux-like-ls-for-powershell/blob/main/image/lss.png)
 
 8. **严格匹配大小写查询**
 
@@ -118,7 +118,7 @@ ls [路径] [选项]
    ls -S "R" -l
    ```
 
-   ![](image\lssl.png)
+   ![ls-S-l](https://github.com/Geekstrange/linux-like-ls-for-powershell/blob/main/image/lssl.png)
 
 ## 自定义配置
 
