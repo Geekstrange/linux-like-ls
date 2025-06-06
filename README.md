@@ -79,7 +79,6 @@ ls [路径] [选项]
    ```powershell
    ls -l
    ```
-   ![详细模式示例](https://via.placeholder.com/600x200?text=表格布局示例)
 
 6. **组合选项**（彩色+文件类型指示符）：
    ```powershell
@@ -121,11 +120,6 @@ $LinuxLikeLsColorMap = @{
    ```
 
 2. 在窄终端窗口中，输出会自动调整为单列显示
-
-## 贡献指南
-
-欢迎提交 Issue 和 Pull Request！项目地址：  
-https://github.com/yourusername/linux-like-ls-for-powershell
 
 ## 许可证
 
