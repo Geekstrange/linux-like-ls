@@ -11,6 +11,11 @@
 - 📏 **CJK字符支持**：正确处理中文、日文、韩文字符的宽度计算
 - 🚀 **轻量高效**：纯 PowerShell 实现，无需外部依赖
 
+## 环境要求
+
+1. 建议使用[PowerShell 7.2+](https://github.com/PowerShell/PowerShell/releases)
+2. 建议使用[Windows Terminal](https://github.com/microsoft/terminal/releases) / [Tabby](https://tabby.sh/) / [Fluent Terminal](https://github.com/felixse/FluentTerminal/releases) 等现代终端
+
 ## 安装
 
 1. 将项目克隆或下载到 PowerShell 模块目录：
