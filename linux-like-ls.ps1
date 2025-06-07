@@ -29,6 +29,7 @@ $LinuxLikeLsBackupExtensions = @(
 )
 
 $LinuxLikeLsSpaceLength = 2
+# 定义ANSI转义序列
 $ANSI_ESC = [char]0x1B
 $ANSI_RESET = "$ANSI_ESC[0m"
 
@@ -40,7 +41,46 @@ $LinuxLikeLsColorMap = @{
     "Archive"      = "$ANSI_ESC[91m" # 红色
     "Media"        = "$ANSI_ESC[95m" # 紫色
     "Backup"       = "$ANSI_ESC[90m" # 灰色
-    "Other"        = $ANSI_RESET     # 默认颜色
+    "Other"        = $ANSI_RESET     # 重置颜色
+}
+
+# 渐变着色函数
+function Add-Gradient {
+    param(
+        [string]$Text,
+        [int[]]$StartRGB = @(0, 150, 255),  # 起始色（蓝）
+        [int[]]$EndRGB = @(50, 255, 50)     # 终止色（绿）
+    )
+    $result = ""
+    $chars = $Text.ToCharArray()
+    for ($i = 0; $i -lt $chars.Count; $i++) {
+        # 计算颜色插值（线性渐变算法）
+        $ratio = $i / ($chars.Count - 1)
+        $r = [int]($StartRGB[0] + ($EndRGB[0] - $StartRGB[0]) * $ratio)
+        $g = [int]($StartRGB[1] + ($EndRGB[1] - $StartRGB[1]) * $ratio)
+        $b = [int]($StartRGB[2] + ($EndRGB[2] - $StartRGB[2]) * $ratio)
+        
+        # 生成ANSI真彩色序列
+        $result += "${ANSI_ESC}[38;2;${r};${g};${b}m$($chars[$i])"
+    }
+    $result + $ANSI_RESET
+}
+
+# 生成渐变标题
+$gradientTitle = Add-Gradient -Text "Linux-like-ls for PowerShell"
+
+# 创建超链接（兼容不同PS版本）
+if ($PSVersionTable.PSVersion.Major -ge 7) {
+    # PowerShell 7.2+ 优化写法
+    $link = $PSStyle.FormatHyperlink(
+        $gradientTitle, 
+        "https://github.com/Geekstrange/linux-like-ls-for-powershell"
+    )
+} else {
+    # 兼容PowerShell 5.1
+    $esc = [char]0x1B
+    $url = "https://github.com/Geekstrange/linux-like-ls-for-powershell"
+    $link = "${esc}]8;;$url${esc}\" + $gradientTitle + "${esc}]8;;${esc}\"
 }
 
 # 文件类型标识符
@@ -56,24 +96,25 @@ $LinuxLikeLsTypeIdMap = @{
 
 # 更新帮助文本说明
 $LinuxLikeLsHelpText = @"
-linux-like-ls
 
-Options:
--1     list one file per line
--f,F   append indicator (one of */@/#/~/%) to entries
--c,C   color the output.
--l,L   display items in a formatted table with borders.
--s     search files (case-insensitive)
--S     search files (case-sensitive)
---help display this help message
+        ${link}
 
-File Type Indicators:
-/ = Directory
-* = Executable
-@ = Symbolic Link
-# = Archive (compressed file)
-~ = Media file (audio/video/image)
-% = Backup/Temporary file
+${ANSI_ESC}[96mOptions:${ANSI_RESET}
+    ${ANSI_ESC}[32m-1${ANSI_RESET}     list one file per line.
+    ${ANSI_ESC}[32m-f,F${ANSI_RESET}   append indicator (one of */@/#/~/%) to entries.
+    ${ANSI_ESC}[32m-c,C${ANSI_RESET}   color the output.
+    ${ANSI_ESC}[32m-l,L${ANSI_RESET}   display items in a formatted table with borders.
+    ${ANSI_ESC}[32m-s${ANSI_RESET}     search files (case-insensitive).
+    ${ANSI_ESC}[32m-S${ANSI_RESET}     search files (case-sensitive).
+    ${ANSI_ESC}[32m--help${ANSI_RESET} display this help message.
+
+${ANSI_ESC}[96mFile Type Indicators:${ANSI_RESET}
+    ${ANSI_ESC}[94m/${ANSI_RESET} = Directory
+    ${ANSI_ESC}[94m*${ANSI_RESET} = Executable
+    ${ANSI_ESC}[94m@${ANSI_RESET} = Symbolic Link
+    ${ANSI_ESC}[94m#${ANSI_RESET} = Archive (compressed file)
+    ${ANSI_ESC}[94m~${ANSI_RESET} = Media file (audio/video/image)
+    ${ANSI_ESC}[94m%${ANSI_RESET} = Backup/Temporary file
 "@
 
 # -----------------------------------------------------------------------------------------------------------------
