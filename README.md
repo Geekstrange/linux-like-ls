@@ -37,7 +37,7 @@
 
 3. 重新加载配置文件：
    ```powershell
-   . $PROFILE
+   .$PROFILE
    ```
 
 ## 使用说明
